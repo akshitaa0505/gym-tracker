@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gym Tracker</title>
+<meta name="theme-color" content="#F2F5F8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gym Tracker">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+/* Layout: one phone-width column. Screen title and add button on top, white
+   cards below, and a fixed two-tab bar at the bottom. Single light look by
+   choice: the three brand colours were picked for a light background. */
+:root {
+  --bg: #F2F5F8;
+  --card: #FFFFFF;
+  --ink: #16181D;
+  --navy: #140152;       /* titles and headings */
+  --accent: #5398BE;     /* main blue: fills, bars, selected states */
+  --accent-ink: #2E6F96; /* the same blue, deepened so small text stays readable */
+  --light: #98C1D9;      /* outlines and supporting fills */
+  --muted: #5C6470;
+  --line: #E3E8EE;
+  --danger: #B3261E;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.35;
+  -webkit-text-size-adjust: 100%;
+}
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+
+.wrap {
+  max-width: 480px;
+  margin-inline: auto;
+  padding-inline: 16px;
+  padding-block: 8px 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+}
+h1 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  color: var(--navy);
+  text-wrap: balance;
+}
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 22px;
+  background: none;
+  color: var(--accent-ink);
+}
+.add-btn { background: var(--accent); color: #FFFFFF; }
+
+.card {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.card h2, .section-label {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--navy);
+}
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.notice {
+  border: 1px solid var(--light);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 12px 14px;
+  font-size: 15px;
+}
+.notice.error { border-color: var(--danger); }
+
+/* Dashboard */
+.total { align-items: center; gap: 4px; padding-block: 22px; }
+.total .num {
+  font-size: 64px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.total .cap { font-size: 17px; font-weight: 600; color: var(--navy); }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tile { align-items: center; gap: 2px; padding: 12px 8px; }
+.tile .k { font-size: 13px; color: var(--muted); }
+.tile .v { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.month-nav { display: flex; align-items: center; justify-content: space-between; }
+.month-nav .name { text-align: center; }
+.month-nav .name b { display: block; font-size: 15px; color: var(--navy); }
+.cal {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  justify-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.cal .wd { font-size: 12px; color: var(--muted); }
+.cal .d {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 14px;
+}
+.cal .d.gym { background: var(--accent); color: #FFFFFF; font-weight: 700; }
+.cal .d.today:not(.gym) { box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+.bars {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  height: 150px;
+  border-bottom: 1px solid var(--light);
+}
+.bars .col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 3px; height: 100%; }
+.bars .val { font-size: 12px; font-weight: 600; color: var(--navy); font-variant-numeric: tabular-nums; }
+.bars .bar { width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; }
+.bar-labels {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+.mg-row { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.mg-row .n { width: 112px; flex: none; }
+.mg-row .track { flex: 1; min-width: 0; }
+.mg-row .fill { height: 10px; border-radius: 5px; background: var(--accent); min-width: 6px; }
+.mg-row .c { width: 28px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Workouts list */
+.list { padding: 0; gap: 0; overflow: hidden; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  text-align: left;
+}
+.row:last-child { border-bottom: 0; }
+.row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.row .date { font-size: 17px; font-weight: 600; color: var(--navy); }
+.row .groups { font-size: 15px; color: var(--accent-ink); }
+.row .lift { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); }
+.row .lift span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.row .chev { color: var(--light); flex: none; }
+
+/* Workout detail */
+.detail-top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; min-height: 52px; gap: 8px; }
+.back { justify-self: start; min-height: 44px; display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0 8px 0 0; color: var(--accent-ink); font-size: 17px; }
+.detail-top .when { font-size: 17px; font-weight: 600; color: var(--navy); text-align: center; }
+.save-state { justify-self: end; font-size: 13px; color: var(--muted); border: 0; background: none; min-height: 44px; padding: 0; text-align: right; }
+.save-state.error { color: var(--danger); font-weight: 600; text-decoration: underline; }
+.caps { margin: 0 0 -8px 16px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.field-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 16px; }
+.plain { padding: 0; gap: 0; }
+.date-input { border: 1px solid var(--light); border-radius: 8px; background: var(--card); padding: 6px 10px; min-height: 36px; }
+.chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.chip {
+  min-height: 44px;
+  border: 1px solid var(--light);
+  border-radius: 22px;
+  background: var(--card);
+  font-size: 15px;
+  font-weight: 500;
+  padding: 0 8px;
+}
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #FFFFFF; font-weight: 600; }
+
+.ex { padding: 0; gap: 0; }
+.ex > * { border-bottom: 1px solid var(--line); }
+.ex > *:last-child { border-bottom: 0; }
+.ex-head { display: flex; align-items: center; gap: 4px; padding: 0 4px 0 16px; min-height: 48px; }
+.ex-name { flex: 1; min-width: 0; border: 0; background: none; padding: 8px 0; font-size: 17px; font-weight: 600; color: var(--navy); }
+.ex-name::placeholder, .notes::placeholder { color: var(--muted); font-weight: 400; }
+.seg-wrap { padding: 8px 16px; }
+.seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 2px; border-radius: 10px; background: var(--light); }
+.seg button { min-height: 40px; border: 0; border-radius: 8px; background: none; font-size: 15px; padding: 0 4px; }
+.seg button[aria-pressed="true"] { background: var(--card); font-weight: 600; box-shadow: 0 1px 3px rgba(20, 1, 82, 0.18); }
+.set { display: flex; align-items: center; gap: 6px; padding: 0 4px 0 16px; min-height: 48px; font-size: 17px; }
+.set .lbl { flex: 1; min-width: 0; color: var(--muted); }
+.set .unit { color: var(--muted); }
+.set .unit.w { width: 34px; }
+.num-in {
+  width: 64px;
+  height: 36px;
+  border: 1px solid var(--light);
+  border-radius: 6px;
+  background: var(--card);
+  padding: 0 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.num-in.reps { width: 52px; }
+.x-btn { width: 40px; height: 44px; border: 0; background: none; color: var(--muted); display: grid; place-items: center; flex: none; }
+.set.cardio { padding-right: 16px; }
+.text-btn { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 16px; border: 0; background: none; color: var(--accent-ink); font-size: 15px; text-align: left; width: 100%; }
+.big-btn { min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--card); color: var(--accent-ink); font-size: 17px; width: 100%; }
+.danger-btn { color: var(--danger); justify-content: center; }
+.notes { width: 100%; border: 0; background: none; padding: 12px 16px; min-height: 48px; resize: vertical; display: block; }
+
+/* Tab bar */
+.tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  background: #F9FAFB;
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.tabs .inner { display: flex; width: 100%; max-width: 480px; }
+.tab {
+  flex: 1;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.tab[aria-current="page"] { color: var(--accent-ink); font-weight: 700; }
+
+/* Standalone site additions: safe areas, sign-in form, small links. */
+html { -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+.wrap { padding-top: calc(8px + env(safe-area-inset-top, 0px)); }
+.lbl-top { font-size: 15px; font-weight: 600; color: var(--navy); margin-bottom: -6px; }
+.text-in { width: 100%; min-height: 44px; border: 1px solid var(--light); border-radius: 10px; background: var(--card); padding: 0 12px; font-size: 17px; }
+.primary-btn { min-height: 48px; border: 0; border-radius: 12px; background: var(--accent); color: #FFFFFF; font-size: 17px; font-weight: 600; margin-top: 4px; }
+.primary-btn:disabled { opacity: 0.7; }
+.form-error { margin: 0; color: var(--danger); font-size: 15px; }
+.link-btn { border: 0; background: none; padding: 0; color: var(--accent-ink); text-decoration: underline; font-size: inherit; }
+.sign-out { align-self: center; min-height: 44px; padding: 0 12px; font-size: 15px; }
+</style>
+</head>
+<body>
+<main class="wrap" id="app"></main>
+
+<nav class="tabs" id="tabs" aria-label="Sections" hidden>
+  <div class="inner">
+    <button class="tab" id="tab-dashboard" data-act="tab" data-view="dashboard">
+      <svg aria-hidden="true" width="26" height="24" viewBox="0 0 26 24" fill="currentColor"><rect x="3" y="12" width="5" height="9" rx="1"></rect><rect x="10.5" y="4" width="5" height="17" rx="1"></rect><rect x="18" y="8" width="5" height="13" rx="1"></rect></svg>
+      Dashboard
+    </button>
+    <button class="tab" id="tab-workouts" data-act="tab" data-view="workouts">
+      <svg aria-hidden="true" width="26" height="24" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12h10"></path><rect x="5" y="6" width="3" height="12" rx="1"></rect><rect x="18" y="6" width="3" height="12" rx="1"></rect><path d="M2 9.5v5M24 9.5v5"></path></svg>
+      Workouts
+    </button>
+  </div>
+</nav>
+
+<script src="supabase.js"></script>
+<script>(function () {
+  'use strict';
+
+  // Your Supabase project. The publishable key is meant to be public: the
+  // database's row level security rules are what keep your workouts private.
+  var SUPABASE_URL = 'https://ryrfxanmbogcqdusqzms.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_smj6nucqkli4aXddNKXphw_Jnv3rTo3';
+
+  var GROUPS = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs & Glutes', 'Core & Cardio'];
+  var TYPES = ['Weights', 'Bodyweight', 'Cardio'];
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  var ICON_PLUS = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M10 3v14M3 10h14"></path></svg>';
+  var ICON_X = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 2l10 10M12 2 2 12"></path></svg>';
+  var ICON_LEFT = '<svg aria-hidden="true" width="10" height="18" viewBox="0 0 10 18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2 2 9l6 7"></path></svg>';
+  var ICON_RIGHT = '<svg aria-hidden="true" width="10" height="18" viewBox="0 0 10 18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 6 7-6 7"></path></svg>';
+
+  var app = document.getElementById('app');
+  var tabs = document.getElementById('tabs');
+  var sb = window.supabase && window.supabase.createClient
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true } })
+    : null;
+  var saveTimer = null;
+  var saveSeq = 0;
+
+  var state = {
+    authChecked: false,    // we know whether someone is signed in
+    session: null,
+    signingIn: false,
+    loginError: '',
+    ready: false,          // workouts have loaded at least once
+    loadError: false,
+    workouts: [],          // newest first
+    view: 'dashboard',     // dashboard | workouts | detail
+    editing: null,         // working copy of the workout open in detail
+    dirty: false,
+    saveState: 'saved',    // saved | saving | error
+    month: firstOfMonth(new Date()),
+    confirmDelete: false,
+    confirmExercise: null
+  };
+
+  // ---------- dates and small helpers ----------
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function parseISO(s) {
+    var p = String(s || '').split('-');
+    var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    return isNaN(d.getTime()) ? new Date() : d;
+  }
+  function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function weekStart(d) { return addDays(d, -d.getDay()); }      // weeks run Sunday to Saturday
+  function fmtLong(s) { var d = parseISO(s); return DAYS[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
+  function fmtShort(s) { var d = parseISO(s); return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear(); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    var b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+    var h = Array.prototype.map.call(b, function (x) { return (x + 256).toString(16).slice(1); }).join('');
+    return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+  }
+  function num(v) { var n = parseFloat(String(v).replace(',', '.')); return isFinite(n) && n > 0 ? n : 0; }
+  function show(n) { return n ? String(n) : ''; }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  // ---------- data shape ----------
+  // One row per workout in the "workouts" table:
+  // id, date ("2026-10-11"), groups (text[]), notes, created_at, and
+  // exercises (jsonb): [{ id, name, type, sets: [{ w, r }], dur, dist }]
+
+  function normalize(id, d) {
+    d = d || {};
+    return {
+      id: id,
+      date: typeof d.date === 'string' ? d.date.slice(0, 10) : iso(new Date()),
+      groups: Array.isArray(d.groups) ? d.groups.filter(function (g) { return GROUPS.indexOf(g) !== -1; }) : [],
+      notes: typeof d.notes === 'string' ? d.notes : '',
+      createdAt: Number(d.createdAt) || 0,
+      exercises: (Array.isArray(d.exercises) ? d.exercises : []).map(function (e) {
+        return {
+          id: e.id || uid(),
+          name: typeof e.name === 'string' ? e.name : '',
+          type: TYPES.indexOf(e.type) !== -1 ? e.type : 'Weights',
+          sets: (Array.isArray(e.sets) ? e.sets : []).map(function (s) { return { w: num(s.w), r: Math.round(num(s.r)) }; }),
+          dur: num(e.dur),
+          dist: num(e.dist)
+        };
+      })
+    };
+  }
+  function fromRow(row) {
+    return normalize(row.id, {
+      date: row.date,
+      groups: row.groups,
+      notes: row.notes,
+      exercises: row.exercises,
+      createdAt: Date.parse(row.created_at) || 0
+    });
+  }
+  function exercisesOf(w) {
+    return w.exercises.map(function (e) {
+      return { id: e.id, name: e.name, type: e.type, sets: e.sets.map(function (s) { return { w: s.w, r: s.r }; }), dur: e.dur, dist: e.dist };
+    });
+  }
+  function toRow(w) {
+    return {
+      id: w.id,
+      date: w.date,
+      groups: GROUPS.filter(function (g) { return w.groups.indexOf(g) !== -1; }),
+      notes: w.notes,
+      exercises: exercisesOf(w),
+      created_at: new Date(w.createdAt || Date.now()).toISOString(),
+      updated_at: new Date().toISOString()
+    };
+  }
+  function copyOf(w) {
+    return normalize(w.id, { date: w.date, groups: w.groups.slice(), notes: w.notes, exercises: exercisesOf(w), createdAt: w.createdAt });
+  }
+  function sortWorkouts(list) {
+    return list.sort(function (a, b) { return b.date.localeCompare(a.date) || b.createdAt - a.createdAt; });
+  }
+  function maxWeight(e) { return e.sets.reduce(function (m, s) { return Math.max(m, s.w); }, 0); }
+
+  // ---------- loading ----------
+
+  function loadWorkouts() {
+    if (!sb || !state.session) return Promise.resolve();
+    return sb.from('workouts')
+      .select('id,date,groups,notes,exercises,created_at')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(5000)
+      .then(function (res) {
+        if (res.error) { state.loadError = true; state.ready = true; }
+        else {
+          var list = res.data.map(fromRow);
+          var open = state.editing;
+          if (open) {
+            // Keep the open workout's unsaved edits on top of what the database returned.
+            var k = list.findIndex(function (x) { return x.id === open.id; });
+            if (k === -1) list.push(copyOf(open)); else list[k] = copyOf(open);
+          }
+          state.workouts = sortWorkouts(list);
+          state.loadError = false;
+          state.ready = true;
+        }
+        if (state.view !== 'detail') render();
+      });
+  }
+
+  // ---------- saving ----------
+
+  function setSaveState(s) {
+    state.saveState = s;
+    var el = document.getElementById('save-state');
+    if (!el) return;
+    el.className = 'save-state' + (s === 'error' ? ' error' : '');
+    el.textContent = s === 'saving' ? 'Saving…' : s === 'error' ? 'Not saved. Retry' : 'Saved';
+    el.disabled = s !== 'error';
+  }
+  function touch() {
+    state.dirty = true;
+    setSaveState('saving');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flush, 500);
+  }
+  function flush() {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    var w = state.editing;
+    if (!w || !sb || !state.dirty) return Promise.resolve();
+    state.dirty = false;
+    var seq = ++saveSeq;
+    var row = toRow(w);
+    function attempt(retry) {
+      return sb.from('workouts').upsert(row).then(function (res) {
+        if (!res.error) {
+          if (seq === saveSeq && !state.dirty) setSaveState('saved');
+          return;
+        }
+        if (retry) return wait(800 + Math.random() * 600).then(function () { return attempt(false); });
+        if (state.editing === w) state.dirty = true;
+        setSaveState('error');
+      }, function () {
+        if (retry) return wait(800 + Math.random() * 600).then(function () { return attempt(false); });
+        if (state.editing === w) state.dirty = true;
+        setSaveState('error');
+      });
+    }
+    return attempt(true);
+  }
+  function mergeEditing() {
+    var w = state.editing;
+    if (!w) return;
+    var copy = copyOf(w);
+    var i = state.workouts.findIndex(function (x) { return x.id === w.id; });
+    if (i === -1) state.workouts.push(copy); else state.workouts[i] = copy;
+    sortWorkouts(state.workouts);
+  }
+
+  // ---------- navigation ----------
+
+  function resetDetailFlags() { state.confirmDelete = false; state.confirmExercise = null; }
+  function go(view) {
+    if (state.view === 'detail') { flush(); mergeEditing(); state.editing = null; }
+    state.view = view;
+    resetDetailFlags();
+    render();
+    window.scrollTo(0, 0);
+  }
+  function openWorkout(id) {
+    var w = state.workouts.find(function (x) { return x.id === id; });
+    if (!w) return;
+    state.editing = copyOf(w);
+    state.dirty = false;
+    state.saveState = 'saved';
+    state.view = 'detail';
+    resetDetailFlags();
+    render();
+    window.scrollTo(0, 0);
+  }
+  function newWorkout() {
+    if (!sb || !state.session) return;
+    if (state.view === 'detail') { flush(); mergeEditing(); }
+    var w = normalize(uuid(), { date: iso(new Date()), createdAt: Date.now() });
+    state.workouts.push(copyOf(w));
+    sortWorkouts(state.workouts);
+    state.editing = w;
+    state.dirty = true;
+    state.view = 'detail';
+    resetDetailFlags();
+    render();
+    window.scrollTo(0, 0);
+    setSaveState('saving');
+    flush();
+  }
+  function deleteWorkout() {
+    var w = state.editing;
+    if (!w || !sb) return;
+    clearTimeout(saveTimer);
+    state.dirty = false;
+    state.editing = null;
+    state.workouts = state.workouts.filter(function (x) { return x.id !== w.id; });
+    sb.from('workouts').delete().eq('id', w.id).then(function (res) {
+      if (res.error) { state.loadError = true; render(); loadWorkouts(); }
+    });
+    state.view = 'workouts';
+    resetDetailFlags();
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  // ---------- signing in ----------
+
+  function signIn(email, password) {
+    state.signingIn = true;
+    state.loginError = '';
+    render();
+    sb.auth.signInWithPassword({ email: email, password: password }).then(function (res) {
+      state.signingIn = false;
+      if (res.error) {
+        var m = String(res.error.message || '');
+        state.loginError = /invalid/i.test(m)
+          ? 'That email and password don’t match. Check them and try again.'
+          : 'Couldn’t sign in. Check your connection and try again.';
+        render();
+        var pw = document.getElementById('login-password');
+        if (pw) pw.focus();
+      }
+      // A successful sign-in arrives through onAuthStateChange below.
+    }, function () {
+      state.signingIn = false;
+      state.loginError = 'Couldn’t sign in. Check your connection and try again.';
+      render();
+    });
+  }
+  function signOut() {
+    flush();
+    sb.auth.signOut();
+  }
+
+  // ---------- rendering ----------
+
+  function topBar(title) {
+    return '<header class="top"><h1>' + title + '</h1>' +
+      '<button class="icon-btn add-btn" data-act="new" aria-label="Add workout">' + ICON_PLUS + '</button></header>';
+  }
+  function notices() {
+    if (state.loadError) {
+      return '<p class="notice error">Couldn’t reach your saved workouts. Check your connection, then <button class="link-btn" data-act="reload">try again</button>.</p>';
+    }
+    if (!state.ready) return '<p class="notice muted">Loading your workouts…</p>';
+    return '';
+  }
+
+  function loginView() {
+    if (!sb) {
+      return '<header class="top"><h1>Gym Tracker</h1></header>' +
+        '<p class="notice error">The app couldn’t start because supabase.js is missing. Upload the whole GymTrackerWeb folder, not only index.html.</p>';
+    }
+    if (!state.authChecked) return '<header class="top"><h1>Gym Tracker</h1></header><p class="notice muted">Loading…</p>';
+    return '<header class="top"><h1>Gym Tracker</h1></header>' +
+      '<form class="card" id="login-form" novalidate>' +
+      '<h2>Sign in</h2>' +
+      '<p class="muted small" style="margin:0">Use the email and password you set up in Supabase.</p>' +
+      '<label class="lbl-top" for="login-email">Email</label>' +
+      '<input class="text-in" id="login-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required>' +
+      '<label class="lbl-top" for="login-password">Password</label>' +
+      '<input class="text-in" id="login-password" type="password" autocomplete="current-password" required>' +
+      (state.loginError ? '<p class="form-error" role="alert">' + esc(state.loginError) + '</p>' : '') +
+      '<button class="primary-btn" type="submit"' + (state.signingIn ? ' disabled' : '') + '>' + (state.signingIn ? 'Signing in…' : 'Sign in') + '</button>' +
+      '</form>';
+  }
+
+  function dashboardView() {
+    var today = new Date();
+    var days = {};
+    state.workouts.forEach(function (w) { days[w.date] = true; });
+    var all = Object.keys(days);
+    var total = all.length;
+
+    var ws = weekStart(today);
+    var wsIso = iso(ws), weIso = iso(addDays(ws, 7));
+    var thisWeek = all.filter(function (d) { return d >= wsIso && d < weIso; }).length;
+    var ym = iso(today).slice(0, 7);
+    var thisMonth = all.filter(function (d) { return d.slice(0, 7) === ym; }).length;
+
+    var html = topBar('Dashboard') + notices();
+
+    html += '<section class="card total"><div class="num">' + total + '</div><div class="cap">' + (total === 1 ? 'day at the gym' : 'days at the gym') + '</div>';
+    if (state.ready && !state.loadError && total === 0) html += '<div class="muted small">No workouts yet. Tap + to log your first session.</div>';
+    html += '</section>';
+
+    html += '<div class="tiles">' +
+      '<section class="card tile"><div class="k">This week</div><div class="v">' + thisWeek + '</div><div class="k">days</div></section>' +
+      '<section class="card tile"><div class="k">This month</div><div class="v">' + thisMonth + '</div><div class="k">days</div></section>' +
+      '</div>';
+
+    // Month calendar
+    var m = state.month;
+    var mPrefix = iso(m).slice(0, 7);
+    var inMonth = all.filter(function (d) { return d.slice(0, 7) === mPrefix; }).length;
+    var count = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+    var todayIso = iso(today);
+    var cells = '';
+    ['S', 'M', 'T', 'W', 'T', 'F', 'S'].forEach(function (s) { cells += '<div class="wd">' + s + '</div>'; });
+    for (var b = 0; b < m.getDay(); b++) cells += '<div class="d"></div>';
+    for (var day = 1; day <= count; day++) {
+      var dIso = mPrefix + '-' + pad(day);
+      var cls = 'd' + (days[dIso] ? ' gym' : '') + (dIso === todayIso ? ' today' : '');
+      cells += '<div class="' + cls + '"' + (days[dIso] ? ' aria-label="' + day + ', gym day"' : '') + '>' + day + '</div>';
+    }
+    html += '<section class="card"><h2>Gym days</h2>' +
+      '<div class="month-nav">' +
+      '<button class="icon-btn" data-act="month" data-step="-1" aria-label="Previous month">' + ICON_LEFT + '</button>' +
+      '<div class="name"><b>' + MONTHS_LONG[m.getMonth()] + ' ' + m.getFullYear() + '</b><span class="muted small">' + inMonth + (inMonth === 1 ? ' gym day' : ' gym days') + '</span></div>' +
+      '<button class="icon-btn" data-act="month" data-step="1" aria-label="Next month">' + ICON_RIGHT + '</button>' +
+      '</div><div class="cal">' + cells + '</div></section>';
+
+    // Days per week, last 8 weeks. Bar height is days out of 7.
+    var bars = '', labels = '';
+    for (var i = 7; i >= 0; i--) {
+      var start = addDays(ws, -7 * i);
+      var s = iso(start), e = iso(addDays(start, 7));
+      var c = all.filter(function (d) { return d >= s && d < e; }).length;
+      bars += '<div class="col">' + (c ? '<div class="val">' + c + '</div>' : '') + '<div class="bar" style="height:' + Math.round(c / 7 * 120) + 'px"></div></div>';
+      labels += '<div>' + start.getDate() + ' ' + MONTHS[start.getMonth()] + '</div>';
+    }
+    html += '<section class="card"><h2>Days per week</h2><div class="bars" role="img" aria-label="Gym days in each of the last 8 weeks">' + bars + '</div><div class="bar-labels">' + labels + '</div></section>';
+
+    // Muscle groups trained
+    var counts = GROUPS.map(function (g) {
+      return { g: g, c: state.workouts.filter(function (w) { return w.groups.indexOf(g) !== -1; }).length };
+    }).filter(function (x) { return x.c > 0; }).sort(function (a, b) { return b.c - a.c; });
+    if (counts.length) {
+      var max = counts[0].c;
+      html += '<section class="card"><h2>Muscle groups trained</h2>' + counts.map(function (x) {
+        return '<div class="mg-row"><div class="n">' + esc(x.g) + '</div><div class="track"><div class="fill" style="width:' + Math.round(x.c / max * 100) + '%"></div></div><div class="c">' + x.c + '</div></div>';
+      }).join('') + '</section>';
+    }
+    html += '<button class="link-btn sign-out" data-act="signout">Sign out</button>';
+    return html;
+  }
+
+  function listView() {
+    var html = topBar('Workouts') + notices();
+    if (state.ready && !state.loadError && !state.workouts.length) {
+      html += '<section class="card"><h2>No workouts yet</h2><div class="muted">Tap + to log today’s session.</div></section>';
+      return html;
+    }
+    if (!state.workouts.length) return html;
+    html += '<section class="card list">' + state.workouts.map(function (w) {
+      var lifts = w.exercises.filter(function (e) { return e.type === 'Weights' && maxWeight(e) > 0; });
+      return '<button class="row" data-act="open" data-id="' + esc(w.id) + '"><div class="body">' +
+        '<div class="date">' + fmtLong(w.date) + '</div>' +
+        (w.groups.length ? '<div class="groups">' + esc(w.groups.join(', ')) + '</div>' : '<div class="muted">No muscle groups set</div>') +
+        lifts.map(function (e) { return '<div class="lift"><span>' + esc(e.name || 'Unnamed exercise') + '</span><span>' + maxWeight(e) + ' kg</span></div>'; }).join('') +
+        '</div><span class="chev">' + ICON_RIGHT + '</span></button>';
+    }).join('') + '</section>';
+    return html;
+  }
+
+  function exerciseCard(e, i) {
+    var html = '<section class="card ex">' +
+      '<div class="ex-head"><input class="ex-name" id="ex-name-' + esc(e.id) + '" data-f="name" data-i="' + i + '" value="' + esc(e.name) + '" placeholder="Exercise name" aria-label="Exercise name" autocomplete="off">';
+    if (state.confirmExercise === e.id) {
+      html += '<button class="text-btn danger-btn" style="width:auto" data-act="ex-del-yes" data-i="' + i + '">Remove?</button>';
+    } else {
+      html += '<button class="x-btn" data-act="ex-del" data-i="' + i + '" aria-label="Remove exercise">' + ICON_X + '</button>';
+    }
+    html += '</div><div class="seg-wrap"><div class="seg" role="group" aria-label="Exercise type">' + TYPES.map(function (t) {
+      return '<button data-act="type" data-i="' + i + '" data-t="' + t + '" aria-pressed="' + (e.type === t) + '">' + t + '</button>';
+    }).join('') + '</div></div>';
+
+    if (e.type === 'Cardio') {
+      html += '<div class="set cardio"><label class="lbl" style="color:var(--ink)" for="dur-' + esc(e.id) + '">Duration</label>' +
+        '<input class="num-in" id="dur-' + esc(e.id) + '" inputmode="decimal" data-f="dur" data-i="' + i + '" value="' + show(e.dur) + '" placeholder="0"><span class="unit w">min</span></div>' +
+        '<div class="set cardio"><label class="lbl" style="color:var(--ink)" for="dist-' + esc(e.id) + '">Distance</label>' +
+        '<input class="num-in" id="dist-' + esc(e.id) + '" inputmode="decimal" data-f="dist" data-i="' + i + '" value="' + show(e.dist) + '" placeholder="0"><span class="unit w">km</span></div>';
+      return html + '</section>';
+    }
+    e.sets.forEach(function (s, j) {
+      var key = esc(e.id) + '-' + j;
+      html += '<div class="set"><span class="lbl">Set ' + (j + 1) + '</span>';
+      if (e.type === 'Weights') {
+        html += '<input class="num-in" id="w-' + key + '" inputmode="decimal" data-f="w" data-i="' + i + '" data-j="' + j + '" value="' + show(s.w) + '" placeholder="0" aria-label="Set ' + (j + 1) + ' weight in kg"><span class="unit">kg</span><span class="unit">×</span>';
+      }
+      html += '<input class="num-in reps" id="r-' + key + '" inputmode="numeric" data-f="r" data-i="' + i + '" data-j="' + j + '" value="' + show(s.r) + '" placeholder="0" aria-label="Set ' + (j + 1) + ' reps"><span class="unit">reps</span>' +
+        '<button class="x-btn" data-act="set-del" data-i="' + i + '" data-j="' + j + '" aria-label="Remove set ' + (j + 1) + '">' + ICON_X + '</button></div>';
+    });
+    html += '<button class="text-btn" data-act="set-add" data-i="' + i + '">' + ICON_PLUS + 'Add set</button>';
+    return html + '</section>';
+  }
+
+  function detailView() {
+    var w = state.editing;
+    var s = state.saveState;
+    var html = '<header class="detail-top">' +
+      '<button class="back" data-act="tab" data-view="workouts">' + ICON_LEFT + 'Workouts</button>' +
+      '<div class="when" id="when">' + fmtShort(w.date) + '</div>' +
+      '<button class="save-state' + (s === 'error' ? ' error' : '') + '" id="save-state" data-act="retry" aria-live="polite"' + (s === 'error' ? '' : ' disabled') + '>' +
+      (s === 'saving' ? 'Saving…' : s === 'error' ? 'Not saved. Retry' : 'Saved') + '</button></header>';
+
+    html += '<p class="caps">Day</p><section class="card plain"><div class="field-row"><label for="date">Date</label>' +
+      '<input class="date-input" type="date" id="date" data-f="date" value="' + esc(w.date) + '"></div></section>';
+
+    html += '<p class="caps">Muscle groups</p><section class="card"><div class="chips">' + GROUPS.map(function (g) {
+      return '<button class="chip" data-act="group" data-g="' + esc(g) + '" aria-pressed="' + (w.groups.indexOf(g) !== -1) + '">' + esc(g) + '</button>';
+    }).join('') + '</div></section>';
+
+    html += w.exercises.map(exerciseCard).join('');
+    html += '<button class="big-btn" data-act="ex-add">' + ICON_PLUS + 'Add exercise</button>';
+
+    html += '<p class="caps"><label for="notes">Notes</label></p><section class="card plain">' +
+      '<textarea class="notes" id="notes" data-f="notes" rows="2" placeholder="Optional">' + esc(w.notes) + '</textarea></section>';
+
+    html += state.confirmDelete
+      ? '<button class="big-btn danger-btn" data-act="del-yes">Tap again to delete this workout</button>'
+      : '<button class="big-btn danger-btn" data-act="del">Delete workout</button>';
+    return html;
+  }
+
+  function render() {
+    var signedIn = !!(sb && state.session);
+    tabs.hidden = !signedIn;
+    if (!signedIn) { app.innerHTML = loginView(); return; }
+    app.innerHTML = state.view === 'dashboard' ? dashboardView() : state.view === 'workouts' ? listView() : detailView();
+    var onDash = state.view === 'dashboard';
+    var d = document.getElementById('tab-dashboard'), l = document.getElementById('tab-workouts');
+    if (onDash) { d.setAttribute('aria-current', 'page'); l.removeAttribute('aria-current'); }
+    else { l.setAttribute('aria-current', 'page'); d.removeAttribute('aria-current'); }
+  }
+
+  // ---------- events ----------
+
+  document.addEventListener('submit', function (ev) {
+    if (ev.target.id !== 'login-form') return;
+    ev.preventDefault();
+    var email = document.getElementById('login-email').value.trim();
+    var password = document.getElementById('login-password').value;
+    if (!email || !password) {
+      state.loginError = 'Enter your email and password.';
+      render();
+      document.getElementById('login-email').value = email;
+      return;
+    }
+    signIn(email, password);
+  });
+
+  document.addEventListener('click', function (ev) {
+    var t = ev.target.closest('[data-act]');
+    if (!t) return;
+    var act = t.dataset.act;
+    var w = state.editing;
+    var i = Number(t.dataset.i), j = Number(t.dataset.j);
+
+    if (act === 'tab') return go(t.dataset.view);
+    if (act === 'new') return newWorkout();
+    if (act === 'open') return openWorkout(t.dataset.id);
+    if (act === 'signout') return signOut();
+    if (act === 'reload') { state.loadError = false; state.ready = false; render(); return loadWorkouts(); }
+    if (act === 'month') {
+      state.month = new Date(state.month.getFullYear(), state.month.getMonth() + Number(t.dataset.step), 1);
+      return render();
+    }
+    if (!w) return;
+    if (act === 'retry') { state.dirty = true; setSaveState('saving'); return flush(); }
+    if (act === 'del') { state.confirmDelete = true; return render(); }
+    if (act === 'del-yes') return deleteWorkout();
+
+    if (act === 'group') {
+      var g = t.dataset.g, at = w.groups.indexOf(g);
+      if (at === -1) w.groups.push(g); else w.groups.splice(at, 1);
+    } else if (act === 'ex-add') {
+      var ex = { id: uid(), name: '', type: 'Weights', sets: [{ w: 0, r: 0 }], dur: 0, dist: 0 };
+      w.exercises.push(ex);
+      state.confirmExercise = null;
+      render();
+      touch();
+      var input = document.getElementById('ex-name-' + ex.id);
+      if (input) input.focus();
+      return;
+    } else if (act === 'ex-del') {
+      state.confirmExercise = w.exercises[i].id;
+      return render();
+    } else if (act === 'ex-del-yes') {
+      w.exercises.splice(i, 1);
+      state.confirmExercise = null;
+    } else if (act === 'type') {
+      var e = w.exercises[i];
+      e.type = t.dataset.t;
+      if (e.type !== 'Cardio' && !e.sets.length) e.sets.push({ w: 0, r: 0 });
+    } else if (act === 'set-add') {
+      w.exercises[i].sets.push({ w: 0, r: 0 });   // a new set starts empty
+    } else if (act === 'set-del') {
+      w.exercises[i].sets.splice(j, 1);
+    } else {
+      return;
+    }
+    render();
+    touch();
+  });
+
+  // Typing updates the working copy and schedules a save; the screen is not redrawn, so the keyboard stays up.
+  document.addEventListener('input', function (ev) {
+    var t = ev.target, f = t.dataset && t.dataset.f, w = state.editing;
+    if (!f || !w) return;
+    var e = w.exercises[Number(t.dataset.i)];
+    if (f === 'notes') w.notes = t.value;
+    else if (f === 'date') {
+      if (!t.value) return;
+      w.date = t.value;
+      var when = document.getElementById('when');
+      if (when) when.textContent = fmtShort(w.date);
+    }
+    else if (!e) return;
+    else if (f === 'name') e.name = t.value;
+    else if (f === 'dur') e.dur = num(t.value);
+    else if (f === 'dist') e.dist = num(t.value);
+    else if (f === 'w') e.sets[Number(t.dataset.j)].w = num(t.value);
+    else if (f === 'r') e.sets[Number(t.dataset.j)].r = Math.round(num(t.value));
+    touch();
+  });
+
+  // Save straight away if the app is being hidden or closed mid-edit, and
+  // pick up changes made on another device when it comes back.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) flush();
+    else if (state.session && state.view !== 'detail') loadWorkouts();
+  });
+  window.addEventListener('pagehide', function () { flush(); });
+
+  // ---------- start ----------
+
+  render();
+  if (sb) {
+    sb.auth.onAuthStateChange(function (event, session) {
+      var wasSignedIn = !!state.session;
+      state.session = session;
+      state.authChecked = true;
+      if (session && !wasSignedIn) {
+        state.ready = false;
+        state.view = 'dashboard';
+        render();
+        loadWorkouts();
+      } else if (!session) {
+        state.workouts = [];
+        state.editing = null;
+        state.ready = false;
+        state.view = 'dashboard';
+        render();
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>
