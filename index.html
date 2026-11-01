@@ -285,23 +285,40 @@ body { margin: 0; }
 .sign-out { align-self: center; min-height: 44px; padding: 0 12px; font-size: 15px; }
 
 /* Exercise dropdown on a workout, and the Exercises tab. */
-.ex-select {
+.pick-btn {
   flex: 1;
   min-width: 0;
   min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   border: 0;
-  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%232E6F96' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 4px center;
-  padding: 8px 24px 8px 0;
+  background: none;
+  padding: 0 8px 0 0;
   font-size: 17px;
   font-weight: 600;
   color: var(--navy);
-  -webkit-appearance: none;
-  appearance: none;
-  text-overflow: ellipsis;
+  text-align: left;
 }
-.ex-select.empty { color: var(--muted); font-weight: 400; }
-.ex-new { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
-.ex-new .text-in { min-height: 38px; font-size: 16px; }
+.pick-btn span { min-width: 0; overflow-wrap: anywhere; }
+.pick-btn.empty { color: var(--muted); font-weight: 400; }
+.pick-btn svg { flex: none; }
+.ex.picking { box-shadow: 0 0 0 2px var(--accent); }
+.ex > .pick-bar { border-bottom: 0; }
+.pick-bar { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 12px; }
+.pick-field { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
+.pick-field > svg { position: absolute; left: 10px; color: var(--muted); pointer-events: none; }
+.pick-input { width: 100%; height: 40px; border: 1px solid var(--light); border-radius: 10px; background: var(--card); padding: 0 36px 0 34px; font-size: 16px; }
+.pick-clear { position: absolute; right: 4px; width: 32px; height: 32px; border: 0; border-radius: 16px; background: none; color: var(--muted); display: grid; place-items: center; }
+.ex > .pick-list { margin: 0 8px 8px; border: 1px solid var(--light); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
+.pick-note { padding: 8px 14px 6px; font-size: 13px; color: var(--muted); }
+.pick-note.none { padding: 12px 14px; font-size: 15px; }
+.pick-opt { min-height: 46px; display: flex; align-items: center; padding: 0 14px; border: 0; border-top: 1px solid var(--line); background: none; font-size: 16px; text-align: left; width: 100%; }
+.pick-opt b { color: var(--navy); }
+.pick-add { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border: 0; border-top: 1px solid var(--light); background: #F4F8FB; color: var(--accent-ink); font-size: 15px; font-weight: 600; text-align: left; width: 100%; }
+.pick-add:disabled { opacity: 0.6; }
+.pick-error { margin: 0; padding: 8px 14px 10px; color: var(--danger); font-size: 14px; }
 .small-btn { min-height: 38px; border: 0; border-radius: 8px; background: var(--accent); color: #FFFFFF; font-size: 15px; font-weight: 600; padding: 0 12px; flex: none; }
 .small-btn.plain { background: none; color: var(--accent-ink); font-weight: 500; padding: 0 6px; }
 .inline-error { margin: 0; padding: 0 16px 10px; color: var(--danger); font-size: 14px; }
@@ -389,9 +406,9 @@ body { margin: 0; }
     libEdit: null,         // { id, name, type } while a row is being edited
     libEditError: '',
     libConfirmDelete: null,
-    addingFor: null,       // id of the workout exercise whose dropdown chose "Add new exercise"
-    newExName: '',
-    newExError: ''
+    pickerFor: null,       // id of the workout exercise whose search box is open
+    pickerQuery: '',
+    pickerError: ''
   };
 
   // ---------- dates and small helpers ----------
@@ -642,9 +659,9 @@ body { margin: 0; }
   function resetDetailFlags() {
     state.confirmDelete = false;
     state.confirmExercise = null;
-    state.addingFor = null;
-    state.newExName = '';
-    state.newExError = '';
+    state.pickerFor = null;
+    state.pickerQuery = '';
+    state.pickerError = '';
     state.libEdit = null;
     state.libEditError = '';
     state.libConfirmDelete = null;
@@ -849,39 +866,113 @@ body { margin: 0; }
     return html;
   }
 
-  // The exercise picker at the top of each exercise on a workout: a dropdown of
-  // the person's exercise list, with "Add new exercise…" at the bottom.
-  function exercisePicker(e, i) {
-    if (state.addingFor === e.id) {
-      return '<div class="ex-new">' +
-        '<input class="text-in" id="ex-new-' + esc(e.id) + '" data-lib="new-name" data-i="' + i + '" value="' + esc(state.newExName) + '" placeholder="New exercise name" aria-label="New exercise name" autocomplete="off" enterkeyhint="done">' +
-        '<button class="small-btn" data-act="ex-new-save" data-i="' + i + '"' + (state.libBusy ? ' disabled' : '') + '>Add</button>' +
-        '<button class="small-btn plain" data-act="ex-new-cancel" data-i="' + i + '">Cancel</button></div>';
+  // ---------- exercise search on a workout ----------
+  // Tapping an exercise's name opens a search box over the person's exercise list.
+  // Matches ignore capitals and can be anywhere in the name; names that start with
+  // the search come first. "Add as a new exercise" appears when nothing has that exact name.
+
+  var ICON_SEARCH = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="7" cy="7" r="5"></circle><path d="M11 11l3.5 3.5"></path></svg>';
+  var ICON_DOWN = '<svg aria-hidden="true" width="12" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l5 5 5-5"></path></svg>';
+
+  function searchLibrary(query) {
+    var q = nameKey(query);
+    if (!q) return state.library.slice();
+    var starts = [], contains = [];
+    state.library.forEach(function (x) {
+      var at = x.name.toLowerCase().indexOf(q);
+      if (at === 0) starts.push(x); else if (at > 0) contains.push(x);
+    });
+    return starts.concat(contains);
+  }
+  function highlight(name, query) {
+    var q = nameKey(query), at = q ? name.toLowerCase().indexOf(q) : -1;
+    if (at < 0) return esc(name);
+    return esc(name.slice(0, at)) + '<b>' + esc(name.slice(at, at + q.length)) + '</b>' + esc(name.slice(at + q.length));
+  }
+  function pickerResults(i) {
+    var query = state.pickerQuery, typed = query.trim().replace(/\s+/g, ' ');
+    var matches = searchLibrary(query);
+    var html = '';
+    if (matches.length) {
+      html += '<div class="pick-note">' + (typed ? matches.length + (matches.length === 1 ? ' match' : ' matches') : 'Your exercises') + '</div>';
+      html += matches.map(function (x) {
+        return '<button class="pick-opt" role="option" data-act="pick-choose" data-i="' + i + '" data-name="' + esc(x.name) + '"><span>' + highlight(x.name, query) + '</span></button>';
+      }).join('');
+    } else if (typed) {
+      html += '<div class="pick-note none">No exercises match “' + esc(typed) + '”.</div>';
+    } else {
+      html += '<div class="pick-note none">Your list is empty. Type a name to add your first exercise.</div>';
     }
-    var inList = e.name && findLib(e.name);
-    var opts = '<option value=""' + (e.name ? '' : ' selected') + ' disabled>Choose exercise</option>';
-    if (e.name && !inList) opts += '<option value="' + esc(e.name) + '" selected>' + esc(e.name) + '</option>';
-    opts += state.library.map(function (x) {
-      return '<option value="' + esc(x.name) + '"' + (inList && inList.id === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>';
-    }).join('');
-    opts += '<option value="__new__">+ Add new exercise…</option>';
-    return '<select class="ex-select' + (e.name ? '' : ' empty') + '" id="ex-pick-' + esc(e.id) + '" data-pick="' + i + '" aria-label="Exercise">' + opts + '</select>';
+    if (typed && !findLib(typed)) {
+      html += '<button class="pick-add" data-act="pick-add" data-i="' + i + '"' + (state.libBusy ? ' disabled' : '') + '>' + ICON_PLUS +
+        '<span>Add “' + esc(typed) + '” as a new exercise</span></button>';
+    }
+    if (state.pickerError) html += '<p class="pick-error" role="alert">' + esc(state.pickerError) + '</p>';
+    return html;
+  }
+  function refreshPicker(i) {
+    var box = document.getElementById('pick-list');
+    if (box) box.innerHTML = pickerResults(i);
+  }
+  function openPicker(i) {
+    var e = state.editing && state.editing.exercises[i];
+    if (!e) return;
+    state.pickerFor = e.id;
+    state.pickerQuery = '';
+    state.pickerError = '';
+    state.confirmExercise = null;
+    render();
+    var input = document.getElementById('pick-input');
+    if (input) input.focus();
+  }
+  function closePicker() {
+    state.pickerFor = null;
+    state.pickerQuery = '';
+    state.pickerError = '';
+    render();
+  }
+  function choosePick(i, name) {
+    var e = state.editing && state.editing.exercises[i];
+    if (!e) return;
+    e.name = name;
+    var item = findLib(name);
+    if (item) e.type = item.type;   // picking an exercise also sets its usual type
+    if (e.type !== 'Cardio' && !e.sets.length) e.sets.push({ w: 0, r: 0 });
+    closePicker();
+    touch();
+  }
+  function addFromPicker(i) {
+    var e = state.editing && state.editing.exercises[i];
+    if (!e || state.libBusy) return;
+    state.libBusy = true;
+    state.pickerError = '';
+    refreshPicker(i);
+    addLibrary(state.pickerQuery, e.type).then(function (res) {
+      state.libBusy = false;
+      if (res.item) return choosePick(i, res.item.name);   // "already in your list" just selects it
+      state.pickerError = res.error;
+      refreshPicker(i);
+    });
+  }
+
+  function exercisePicker(e, i) {
+    if (state.pickerFor === e.id) {
+      return '<div class="pick-bar"><div class="pick-field">' + ICON_SEARCH +
+        '<input class="pick-input" id="pick-input" data-lib="search" data-i="' + i + '" value="' + esc(state.pickerQuery) + '" placeholder="Search exercises" aria-label="Search exercises" role="combobox" aria-expanded="true" aria-controls="pick-list" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="go">' +
+        '<button class="pick-clear" data-act="pick-clear" data-i="' + i + '" aria-label="Clear search">' + ICON_X + '</button></div>' +
+        '<button class="small-btn plain" data-act="pick-cancel">Cancel</button></div>' +
+        '<div class="pick-list" id="pick-list" role="listbox" aria-label="Matching exercises">' + pickerResults(i) + '</div>';
+    }
+    return '<div class="ex-head"><button class="pick-btn' + (e.name ? '' : ' empty') + '" data-act="pick-open" data-i="' + i + '" aria-label="Exercise: ' + esc(e.name || 'not chosen') + '. Tap to search">' +
+      '<span>' + esc(e.name || 'Choose exercise') + '</span>' + ICON_DOWN + '</button>' +
+      (state.confirmExercise === e.id
+        ? '<button class="text-btn danger-btn" style="width:auto" data-act="ex-del-yes" data-i="' + i + '">Remove?</button>'
+        : '<button class="x-btn" data-act="ex-del" data-i="' + i + '" aria-label="Remove exercise">' + ICON_X + '</button>') +
+      '</div>';
   }
 
   function exerciseCard(e, i) {
-    var html = '<section class="card ex">' +
-      '<div class="ex-head">' + exercisePicker(e, i);
-    if (state.addingFor === e.id) {
-      // The Add / Cancel buttons take the place of the remove button while adding.
-    } else if (state.confirmExercise === e.id) {
-      html += '<button class="text-btn danger-btn" style="width:auto" data-act="ex-del-yes" data-i="' + i + '">Remove?</button>';
-    } else {
-      html += '<button class="x-btn" data-act="ex-del" data-i="' + i + '" aria-label="Remove exercise">' + ICON_X + '</button>';
-    }
-    html += '</div>';
-    if (state.addingFor === e.id && state.newExError) {
-      html += '<p class="inline-error" role="alert">' + esc(state.newExError) + '</p>';
-    }
+    var html = '<section class="card ex' + (state.pickerFor === e.id ? ' picking' : '') + '">' + exercisePicker(e, i);
     html += '<div class="seg-wrap"><div class="seg" role="group" aria-label="Exercise type">' + TYPES.map(function (t) {
       return '<button data-act="type" data-i="' + i + '" data-t="' + t + '" aria-pressed="' + (e.type === t) + '">' + t + '</button>';
     }).join('') + '</div></div>';
@@ -1077,11 +1168,17 @@ body { margin: 0; }
     if (!w) return;
 
     // "Add new exercise" from a workout's dropdown
-    if (act === 'ex-new-cancel') {
-      state.addingFor = null; state.newExName = ''; state.newExError = '';
-      return render();
+    if (act === 'pick-open') return openPicker(i);
+    if (act === 'pick-cancel') return closePicker();
+    if (act === 'pick-choose') return choosePick(i, t.dataset.name);
+    if (act === 'pick-add') return addFromPicker(i);
+    if (act === 'pick-clear') {
+      state.pickerQuery = '';
+      state.pickerError = '';
+      var box = document.getElementById('pick-input');
+      if (box) { box.value = ''; box.focus(); }
+      return refreshPicker(i);
     }
-    if (act === 'ex-new-save') return saveNewFromWorkout(i);
     if (act === 'retry') { state.dirty = true; setSaveState('saving'); return flush(); }
     if (act === 'del') { state.confirmDelete = true; return render(); }
     if (act === 'del-yes') return deleteWorkout();
@@ -1092,12 +1189,8 @@ body { margin: 0; }
     } else if (act === 'ex-add') {
       var ex = { id: uid(), name: '', type: 'Weights', sets: [{ w: 0, r: 0 }], dur: 0, dist: 0 };
       w.exercises.push(ex);
-      state.confirmExercise = null;
-      render();
       touch();
-      var input = document.getElementById('ex-pick-' + ex.id);
-      if (input) input.focus();
-      return;
+      return openPicker(w.exercises.length - 1);   // a new exercise opens straight into the search box
     } else if (act === 'ex-del') {
       state.confirmExercise = w.exercises[i].id;
       return render();
@@ -1119,65 +1212,21 @@ body { margin: 0; }
     touch();
   });
 
-  // Saves the name typed after choosing "Add new exercise" on a workout: it goes into
-  // the exercise list (with the type currently picked on that exercise) and is selected.
-  function saveNewFromWorkout(i) {
-    var w = state.editing, e = w && w.exercises[i];
-    if (!e || state.libBusy) return;
-    state.libBusy = true;
-    state.newExError = '';
-    render();
-    addLibrary(state.newExName, e.type).then(function (res) {
-      state.libBusy = false;
-      var item = res.item;
-      if (res.error && !item) {
-        state.newExError = res.error;
-        render();
-        var input = document.getElementById('ex-new-' + e.id);
-        if (input) input.focus();
-        return;
-      }
-      // Already in the list counts as success: just select it.
-      e.name = item.name;
-      e.type = item.type;
-      if (e.type !== 'Cardio' && !e.sets.length) e.sets.push({ w: 0, r: 0 });
-      state.addingFor = null;
-      state.newExName = '';
-      render();
-      touch();
-    });
-  }
-
-  // Choosing from an exercise dropdown on a workout.
-  document.addEventListener('change', function (ev) {
-    var t = ev.target;
-    if (!t.dataset || t.dataset.pick === undefined) return;
-    var w = state.editing, i = Number(t.dataset.pick), e = w && w.exercises[i];
-    if (!e) return;
-    if (t.value === '__new__') {
-      state.addingFor = e.id;
-      state.newExName = '';
-      state.newExError = '';
-      state.confirmExercise = null;
-      render();
-      var input = document.getElementById('ex-new-' + e.id);
-      if (input) input.focus();
-      return;
-    }
-    e.name = t.value;
-    var item = findLib(t.value);
-    if (item) e.type = item.type;   // picking an exercise also sets its usual type
-    if (e.type !== 'Cardio' && !e.sets.length) e.sets.push({ w: 0, r: 0 });
-    render();
-    touch();
-  });
-
-  // Enter in the "New exercise name" box saves it.
+  // In the exercise search box: Enter picks the exact match (or the only match, or
+  // adds the name when nothing matches); Escape closes the search.
   document.addEventListener('keydown', function (ev) {
     var t = ev.target;
-    if (ev.key !== 'Enter' || !t.dataset || t.dataset.lib !== 'new-name') return;
+    if (!t.dataset || t.dataset.lib !== 'search') return;
+    var i = Number(t.dataset.i);
+    if (ev.key === 'Escape') { ev.preventDefault(); return closePicker(); }
+    if (ev.key !== 'Enter') return;
     ev.preventDefault();
-    saveNewFromWorkout(Number(t.dataset.i));
+    var typed = state.pickerQuery.trim();
+    if (!typed) return;
+    var exact = findLib(typed), matches = searchLibrary(typed);
+    if (exact) return choosePick(i, exact.name);
+    if (matches.length === 1) return choosePick(i, matches[0].name);
+    if (!matches.length) return addFromPicker(i);
   });
 
   // Typing updates the working copy and schedules a save; the screen is not redrawn, so the keyboard stays up.
@@ -1186,7 +1235,12 @@ body { margin: 0; }
     var lib = t.dataset && t.dataset.lib;
     if (lib === 'draft-name') { state.libDraft.name = t.value; return; }
     if (lib === 'edit-name') { if (state.libEdit) state.libEdit.name = t.value; return; }
-    if (lib === 'new-name') { state.newExName = t.value; return; }
+    if (lib === 'search') {
+      // Only the results list is redrawn, so the keyboard stays open while typing.
+      state.pickerQuery = t.value;
+      state.pickerError = '';
+      return refreshPicker(Number(t.dataset.i));
+    }
     if (!f || !w) return;
     var e = w.exercises[Number(t.dataset.i)];
     if (f === 'notes') w.notes = t.value;
