@@ -283,6 +283,36 @@ body { margin: 0; }
 .form-error { margin: 0; color: var(--danger); font-size: 15px; }
 .link-btn { border: 0; background: none; padding: 0; color: var(--accent-ink); text-decoration: underline; font-size: inherit; }
 .sign-out { align-self: center; min-height: 44px; padding: 0 12px; font-size: 15px; }
+
+/* Exercise dropdown on a workout, and the Exercises tab. */
+.ex-select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%232E6F96' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 4px center;
+  padding: 8px 24px 8px 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--navy);
+  -webkit-appearance: none;
+  appearance: none;
+  text-overflow: ellipsis;
+}
+.ex-select.empty { color: var(--muted); font-weight: 400; }
+.ex-new { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.ex-new .text-in { min-height: 38px; font-size: 16px; }
+.small-btn { min-height: 38px; border: 0; border-radius: 8px; background: var(--accent); color: #FFFFFF; font-size: 15px; font-weight: 600; padding: 0 12px; flex: none; }
+.small-btn.plain { background: none; color: var(--accent-ink); font-weight: 500; padding: 0 6px; }
+.inline-error { margin: 0; padding: 0 16px 10px; color: var(--danger); font-size: 14px; }
+.lib-form { gap: 10px; }
+.lib-form .form-error { font-size: 14px; }
+.lib-group { padding: 0; gap: 0; overflow: hidden; }
+.lib-group h2 { padding: 14px 16px 6px; }
+.lib-row { display: flex; align-items: center; gap: 4px; min-height: 48px; padding: 0 4px 0 16px; border-top: 1px solid var(--line); }
+.lib-row .n { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 16px; }
+.lib-edit { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px 12px; border-top: 1px solid var(--line); }
+.lib-edit .actions { display: flex; justify-content: flex-end; gap: 6px; }
 </style>
 </head>
 <body>
@@ -297,6 +327,10 @@ body { margin: 0; }
     <button class="tab" id="tab-workouts" data-act="tab" data-view="workouts">
       <svg aria-hidden="true" width="26" height="24" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12h10"></path><rect x="5" y="6" width="3" height="12" rx="1"></rect><rect x="18" y="6" width="3" height="12" rx="1"></rect><path d="M2 9.5v5M24 9.5v5"></path></svg>
       Workouts
+    </button>
+    <button class="tab" id="tab-exercises" data-act="tab" data-view="exercises">
+      <svg aria-hidden="true" width="26" height="24" viewBox="0 0 26 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h13M9 12h13M9 18h13"></path><circle cx="4.5" cy="6" r="1.2" fill="currentColor"></circle><circle cx="4.5" cy="12" r="1.2" fill="currentColor"></circle><circle cx="4.5" cy="18" r="1.2" fill="currentColor"></circle></svg>
+      Exercises
     </button>
   </div>
 </nav>
@@ -337,13 +371,27 @@ body { margin: 0; }
     ready: false,          // workouts have loaded at least once
     loadError: false,
     workouts: [],          // newest first
-    view: 'dashboard',     // dashboard | workouts | detail
+    view: 'dashboard',     // dashboard | workouts | detail | exercises
     editing: null,         // working copy of the workout open in detail
     dirty: false,
     saveState: 'saved',    // saved | saving | error
     month: firstOfMonth(new Date()),
     confirmDelete: false,
-    confirmExercise: null
+    confirmExercise: null,
+
+    // Exercise list (the "exercises" table): the choices in each workout's dropdown.
+    library: [],           // [{ id, name, type }], A to Z
+    libReady: false,
+    libLoadError: false,
+    libDraft: { name: '', type: 'Weights' },   // the add form on the Exercises tab
+    libError: '',
+    libBusy: false,
+    libEdit: null,         // { id, name, type } while a row is being edited
+    libEditError: '',
+    libConfirmDelete: null,
+    addingFor: null,       // id of the workout exercise whose dropdown chose "Add new exercise"
+    newExName: '',
+    newExError: ''
   };
 
   // ---------- dates and small helpers ----------
@@ -461,6 +509,84 @@ body { margin: 0; }
       });
   }
 
+  // ---------- exercise list ----------
+  // One row per exercise in the "exercises" table: id, name, type.
+  // Each person has their own list; the database's security rules keep it private.
+
+  function nameKey(n) { return String(n || '').trim().toLowerCase(); }
+  function findLib(name) {
+    var k = nameKey(name);
+    return state.library.find(function (x) { return nameKey(x.name) === k; }) || null;
+  }
+  function sortLibrary() {
+    state.library.sort(function (a, b) { return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }); });
+  }
+  function loadLibrary() {
+    if (!sb || !state.session) return Promise.resolve();
+    return sb.from('exercises').select('id,name,type').order('name').limit(2000).then(function (res) {
+      if (res.error) { state.libLoadError = true; }
+      else {
+        state.library = res.data.map(function (r) {
+          return { id: r.id, name: r.name, type: TYPES.indexOf(r.type) !== -1 ? r.type : 'Weights' };
+        });
+        sortLibrary();
+        state.libLoadError = false;
+      }
+      state.libReady = true;
+      // Don't redraw a workout while someone is typing in it (that would close the keyboard).
+      var a = document.activeElement;
+      var typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+      if (state.view !== 'detail' || !typing) render();
+    });
+  }
+  // Adds an exercise to the list. Resolves { item } or { error: 'message' }.
+  function addLibrary(name, type) {
+    name = String(name || '').trim().replace(/\s+/g, ' ');
+    if (!name) return Promise.resolve({ error: 'Enter a name for the exercise.' });
+    var existing = findLib(name);
+    if (existing) return Promise.resolve({ error: '“' + existing.name + '” is already in your list.', item: existing });
+    return sb.from('exercises').insert({ name: name, type: type }).select('id,name,type').single().then(function (res) {
+      if (res.error) {
+        return { error: res.error.code === '23505' ? 'That exercise is already in your list.' : 'Couldn’t save it. Check your connection and try again.' };
+      }
+      var item = { id: res.data.id, name: res.data.name, type: res.data.type };
+      state.library.push(item);
+      sortLibrary();
+      return { item: item };
+    }, function () { return { error: 'Couldn’t save it. Check your connection and try again.' }; });
+  }
+  function saveLibraryEdit() {
+    var ed = state.libEdit;
+    if (!ed) return;
+    var name = ed.name.trim().replace(/\s+/g, ' ');
+    if (!name) { state.libEditError = 'Enter a name for the exercise.'; return render(); }
+    var clash = findLib(name);
+    if (clash && clash.id !== ed.id) { state.libEditError = '“' + clash.name + '” is already in your list.'; return render(); }
+    state.libBusy = true;
+    render();
+    sb.from('exercises').update({ name: name, type: ed.type }).eq('id', ed.id).then(function (res) {
+      state.libBusy = false;
+      if (res.error) {
+        state.libEditError = res.error.code === '23505' ? 'That exercise is already in your list.' : 'Couldn’t save it. Check your connection and try again.';
+      } else {
+        var item = state.library.find(function (x) { return x.id === ed.id; });
+        if (item) { item.name = name; item.type = ed.type; }
+        sortLibrary();
+        state.libEdit = null;
+        state.libEditError = '';
+      }
+      render();
+    });
+  }
+  function deleteLibrary(id) {
+    state.library = state.library.filter(function (x) { return x.id !== id; });
+    state.libConfirmDelete = null;
+    render();
+    sb.from('exercises').delete().eq('id', id).then(function (res) {
+      if (res.error) loadLibrary();   // put it back if the delete didn't go through
+    });
+  }
+
   // ---------- saving ----------
 
   function setSaveState(s) {
@@ -513,7 +639,17 @@ body { margin: 0; }
 
   // ---------- navigation ----------
 
-  function resetDetailFlags() { state.confirmDelete = false; state.confirmExercise = null; }
+  function resetDetailFlags() {
+    state.confirmDelete = false;
+    state.confirmExercise = null;
+    state.addingFor = null;
+    state.newExName = '';
+    state.newExError = '';
+    state.libEdit = null;
+    state.libEditError = '';
+    state.libConfirmDelete = null;
+    state.libError = '';
+  }
   function go(view) {
     if (state.view === 'detail') { flush(); mergeEditing(); state.editing = null; }
     state.view = view;
@@ -713,15 +849,40 @@ body { margin: 0; }
     return html;
   }
 
+  // The exercise picker at the top of each exercise on a workout: a dropdown of
+  // the person's exercise list, with "Add new exercise…" at the bottom.
+  function exercisePicker(e, i) {
+    if (state.addingFor === e.id) {
+      return '<div class="ex-new">' +
+        '<input class="text-in" id="ex-new-' + esc(e.id) + '" data-lib="new-name" data-i="' + i + '" value="' + esc(state.newExName) + '" placeholder="New exercise name" aria-label="New exercise name" autocomplete="off" enterkeyhint="done">' +
+        '<button class="small-btn" data-act="ex-new-save" data-i="' + i + '"' + (state.libBusy ? ' disabled' : '') + '>Add</button>' +
+        '<button class="small-btn plain" data-act="ex-new-cancel" data-i="' + i + '">Cancel</button></div>';
+    }
+    var inList = e.name && findLib(e.name);
+    var opts = '<option value=""' + (e.name ? '' : ' selected') + ' disabled>Choose exercise</option>';
+    if (e.name && !inList) opts += '<option value="' + esc(e.name) + '" selected>' + esc(e.name) + '</option>';
+    opts += state.library.map(function (x) {
+      return '<option value="' + esc(x.name) + '"' + (inList && inList.id === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>';
+    }).join('');
+    opts += '<option value="__new__">+ Add new exercise…</option>';
+    return '<select class="ex-select' + (e.name ? '' : ' empty') + '" id="ex-pick-' + esc(e.id) + '" data-pick="' + i + '" aria-label="Exercise">' + opts + '</select>';
+  }
+
   function exerciseCard(e, i) {
     var html = '<section class="card ex">' +
-      '<div class="ex-head"><input class="ex-name" id="ex-name-' + esc(e.id) + '" data-f="name" data-i="' + i + '" value="' + esc(e.name) + '" placeholder="Exercise name" aria-label="Exercise name" autocomplete="off">';
-    if (state.confirmExercise === e.id) {
+      '<div class="ex-head">' + exercisePicker(e, i);
+    if (state.addingFor === e.id) {
+      // The Add / Cancel buttons take the place of the remove button while adding.
+    } else if (state.confirmExercise === e.id) {
       html += '<button class="text-btn danger-btn" style="width:auto" data-act="ex-del-yes" data-i="' + i + '">Remove?</button>';
     } else {
       html += '<button class="x-btn" data-act="ex-del" data-i="' + i + '" aria-label="Remove exercise">' + ICON_X + '</button>';
     }
-    html += '</div><div class="seg-wrap"><div class="seg" role="group" aria-label="Exercise type">' + TYPES.map(function (t) {
+    html += '</div>';
+    if (state.addingFor === e.id && state.newExError) {
+      html += '<p class="inline-error" role="alert">' + esc(state.newExError) + '</p>';
+    }
+    html += '<div class="seg-wrap"><div class="seg" role="group" aria-label="Exercise type">' + TYPES.map(function (t) {
       return '<button data-act="type" data-i="' + i + '" data-t="' + t + '" aria-pressed="' + (e.type === t) + '">' + t + '</button>';
     }).join('') + '</div></div>';
 
@@ -773,20 +934,96 @@ body { margin: 0; }
     return html;
   }
 
+  var ICON_EDIT = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L6 12.5H3.5V10z"></path></svg>';
+
+  function typeButtons(act, current) {
+    return '<div class="seg" role="group" aria-label="Exercise type">' + TYPES.map(function (t) {
+      return '<button type="button" data-act="' + act + '" data-t="' + t + '" aria-pressed="' + (current === t) + '">' + t + '</button>';
+    }).join('') + '</div>';
+  }
+
+  // The Exercises tab: the list behind each workout's exercise dropdown.
+  function exercisesView() {
+    var html = '<header class="top"><h1>Exercises</h1></header>';
+    if (state.libLoadError) {
+      html += '<p class="notice error">Couldn’t load your exercise list. Check your connection, then <button class="link-btn" data-act="lib-reload">try again</button>.</p>';
+    } else if (!state.libReady) {
+      html += '<p class="notice muted">Loading your exercises…</p>';
+    }
+
+    html += '<form class="card lib-form" id="lib-form" novalidate>' +
+      '<h2>Add an exercise</h2>' +
+      '<label class="lbl-top" for="lib-name">Name</label>' +
+      '<input class="text-in" id="lib-name" data-lib="draft-name" value="' + esc(state.libDraft.name) + '" placeholder="e.g. Bench press" autocomplete="off">' +
+      '<span class="lbl-top">Type</span>' + typeButtons('lib-type', state.libDraft.type) +
+      (state.libError ? '<p class="form-error" role="alert">' + esc(state.libError) + '</p>' : '') +
+      '<button class="primary-btn" type="submit"' + (state.libBusy ? ' disabled' : '') + '>Add to list</button>' +
+      '</form>';
+
+    if (state.libReady && !state.library.length) {
+      html += '<section class="card"><h2>No exercises yet</h2><div class="muted">Add your first one above. It will then appear in the dropdown on every workout.</div></section>';
+      return html;
+    }
+
+    TYPES.forEach(function (type) {
+      var items = state.library.filter(function (x) { return x.type === type; });
+      if (!items.length) return;
+      html += '<section class="card lib-group"><h2>' + type + ' <span class="muted small">(' + items.length + ')</span></h2>' + items.map(function (x) {
+        var ed = state.libEdit;
+        if (ed && ed.id === x.id) {
+          return '<div class="lib-edit">' +
+            '<input class="text-in" id="lib-edit-name" data-lib="edit-name" value="' + esc(ed.name) + '" aria-label="Exercise name" autocomplete="off">' +
+            typeButtons('lib-edit-type', ed.type) +
+            (state.libEditError ? '<p class="form-error" role="alert">' + esc(state.libEditError) + '</p>' : '') +
+            '<div class="actions"><button class="small-btn plain" data-act="lib-cancel">Cancel</button>' +
+            '<button class="small-btn" data-act="lib-save"' + (state.libBusy ? ' disabled' : '') + '>Save</button></div></div>';
+        }
+        var right = state.libConfirmDelete === x.id
+          ? '<button class="small-btn plain" style="color:var(--danger)" data-act="lib-del-yes" data-id="' + esc(x.id) + '">Remove?</button>'
+          : '<button class="x-btn" data-act="lib-edit" data-id="' + esc(x.id) + '" aria-label="Edit ' + esc(x.name) + '">' + ICON_EDIT + '</button>' +
+            '<button class="x-btn" data-act="lib-del" data-id="' + esc(x.id) + '" aria-label="Remove ' + esc(x.name) + '">' + ICON_X + '</button>';
+        return '<div class="lib-row"><span class="n">' + esc(x.name) + '</span>' + right + '</div>';
+      }).join('') + '</section>';
+    });
+    html += '<p class="muted small" style="margin:0 4px">Renaming or removing an exercise here doesn’t change workouts you’ve already logged.</p>';
+    return html;
+  }
+
   function render() {
     var signedIn = !!(sb && state.session);
     tabs.hidden = !signedIn;
     if (!signedIn) { app.innerHTML = loginView(); return; }
-    app.innerHTML = state.view === 'dashboard' ? dashboardView() : state.view === 'workouts' ? listView() : detailView();
-    var onDash = state.view === 'dashboard';
-    var d = document.getElementById('tab-dashboard'), l = document.getElementById('tab-workouts');
-    if (onDash) { d.setAttribute('aria-current', 'page'); l.removeAttribute('aria-current'); }
-    else { l.setAttribute('aria-current', 'page'); d.removeAttribute('aria-current'); }
+    var v = state.view;
+    app.innerHTML = v === 'dashboard' ? dashboardView()
+      : v === 'workouts' ? listView()
+      : v === 'exercises' ? exercisesView()
+      : detailView();
+    var current = v === 'detail' ? 'workouts' : v;
+    ['dashboard', 'workouts', 'exercises'].forEach(function (name) {
+      var tab = document.getElementById('tab-' + name);
+      if (name === current) tab.setAttribute('aria-current', 'page'); else tab.removeAttribute('aria-current');
+    });
   }
 
   // ---------- events ----------
 
   document.addEventListener('submit', function (ev) {
+    if (ev.target.id === 'lib-form') {
+      ev.preventDefault();
+      if (state.libBusy) return;
+      state.libBusy = true;
+      state.libError = '';
+      render();
+      addLibrary(state.libDraft.name, state.libDraft.type).then(function (res) {
+        state.libBusy = false;
+        if (res.error) state.libError = res.error;
+        else state.libDraft = { name: '', type: state.libDraft.type };
+        render();
+        var input = document.getElementById('lib-name');
+        if (input) input.focus();
+      });
+      return;
+    }
     if (ev.target.id !== 'login-form') return;
     ev.preventDefault();
     var email = document.getElementById('login-email').value.trim();
@@ -816,7 +1053,35 @@ body { margin: 0; }
       state.month = new Date(state.month.getFullYear(), state.month.getMonth() + Number(t.dataset.step), 1);
       return render();
     }
+
+    // Exercises tab
+    if (act === 'lib-reload') { state.libLoadError = false; state.libReady = false; render(); return loadLibrary(); }
+    if (act === 'lib-type') { state.libDraft.type = t.dataset.t; return render(); }
+    if (act === 'lib-edit') {
+      var item = state.library.find(function (x) { return x.id === t.dataset.id; });
+      if (!item) return;
+      state.libEdit = { id: item.id, name: item.name, type: item.type };
+      state.libEditError = '';
+      state.libConfirmDelete = null;
+      render();
+      var editInput = document.getElementById('lib-edit-name');
+      if (editInput) editInput.focus();
+      return;
+    }
+    if (act === 'lib-edit-type') { if (state.libEdit) state.libEdit.type = t.dataset.t; return render(); }
+    if (act === 'lib-cancel') { state.libEdit = null; state.libEditError = ''; return render(); }
+    if (act === 'lib-save') return saveLibraryEdit();
+    if (act === 'lib-del') { state.libConfirmDelete = t.dataset.id; state.libEdit = null; return render(); }
+    if (act === 'lib-del-yes') return deleteLibrary(t.dataset.id);
+
     if (!w) return;
+
+    // "Add new exercise" from a workout's dropdown
+    if (act === 'ex-new-cancel') {
+      state.addingFor = null; state.newExName = ''; state.newExError = '';
+      return render();
+    }
+    if (act === 'ex-new-save') return saveNewFromWorkout(i);
     if (act === 'retry') { state.dirty = true; setSaveState('saving'); return flush(); }
     if (act === 'del') { state.confirmDelete = true; return render(); }
     if (act === 'del-yes') return deleteWorkout();
@@ -830,7 +1095,7 @@ body { margin: 0; }
       state.confirmExercise = null;
       render();
       touch();
-      var input = document.getElementById('ex-name-' + ex.id);
+      var input = document.getElementById('ex-pick-' + ex.id);
       if (input) input.focus();
       return;
     } else if (act === 'ex-del') {
@@ -854,9 +1119,74 @@ body { margin: 0; }
     touch();
   });
 
+  // Saves the name typed after choosing "Add new exercise" on a workout: it goes into
+  // the exercise list (with the type currently picked on that exercise) and is selected.
+  function saveNewFromWorkout(i) {
+    var w = state.editing, e = w && w.exercises[i];
+    if (!e || state.libBusy) return;
+    state.libBusy = true;
+    state.newExError = '';
+    render();
+    addLibrary(state.newExName, e.type).then(function (res) {
+      state.libBusy = false;
+      var item = res.item;
+      if (res.error && !item) {
+        state.newExError = res.error;
+        render();
+        var input = document.getElementById('ex-new-' + e.id);
+        if (input) input.focus();
+        return;
+      }
+      // Already in the list counts as success: just select it.
+      e.name = item.name;
+      e.type = item.type;
+      if (e.type !== 'Cardio' && !e.sets.length) e.sets.push({ w: 0, r: 0 });
+      state.addingFor = null;
+      state.newExName = '';
+      render();
+      touch();
+    });
+  }
+
+  // Choosing from an exercise dropdown on a workout.
+  document.addEventListener('change', function (ev) {
+    var t = ev.target;
+    if (!t.dataset || t.dataset.pick === undefined) return;
+    var w = state.editing, i = Number(t.dataset.pick), e = w && w.exercises[i];
+    if (!e) return;
+    if (t.value === '__new__') {
+      state.addingFor = e.id;
+      state.newExName = '';
+      state.newExError = '';
+      state.confirmExercise = null;
+      render();
+      var input = document.getElementById('ex-new-' + e.id);
+      if (input) input.focus();
+      return;
+    }
+    e.name = t.value;
+    var item = findLib(t.value);
+    if (item) e.type = item.type;   // picking an exercise also sets its usual type
+    if (e.type !== 'Cardio' && !e.sets.length) e.sets.push({ w: 0, r: 0 });
+    render();
+    touch();
+  });
+
+  // Enter in the "New exercise name" box saves it.
+  document.addEventListener('keydown', function (ev) {
+    var t = ev.target;
+    if (ev.key !== 'Enter' || !t.dataset || t.dataset.lib !== 'new-name') return;
+    ev.preventDefault();
+    saveNewFromWorkout(Number(t.dataset.i));
+  });
+
   // Typing updates the working copy and schedules a save; the screen is not redrawn, so the keyboard stays up.
   document.addEventListener('input', function (ev) {
     var t = ev.target, f = t.dataset && t.dataset.f, w = state.editing;
+    var lib = t.dataset && t.dataset.lib;
+    if (lib === 'draft-name') { state.libDraft.name = t.value; return; }
+    if (lib === 'edit-name') { if (state.libEdit) state.libEdit.name = t.value; return; }
+    if (lib === 'new-name') { state.newExName = t.value; return; }
     if (!f || !w) return;
     var e = w.exercises[Number(t.dataset.i)];
     if (f === 'notes') w.notes = t.value;
@@ -879,7 +1209,7 @@ body { margin: 0; }
   // pick up changes made on another device when it comes back.
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) flush();
-    else if (state.session && state.view !== 'detail') loadWorkouts();
+    else if (state.session && state.view !== 'detail') { loadWorkouts(); loadLibrary(); }
   });
   window.addEventListener('pagehide', function () { flush(); });
 
@@ -896,10 +1226,14 @@ body { margin: 0; }
         state.view = 'dashboard';
         render();
         loadWorkouts();
+        loadLibrary();
       } else if (!session) {
         state.workouts = [];
         state.editing = null;
         state.ready = false;
+        state.library = [];
+        state.libReady = false;
+        resetDetailFlags();
         state.view = 'dashboard';
         render();
       }
