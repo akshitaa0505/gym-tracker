@@ -43,11 +43,24 @@ button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
 
+/* App shell: the page itself never scrolls. Only the content area (.scroller)
+   scrolls, and the tab bar sits below it in normal flow. Pinning the tab bar with
+   position: fixed made it jump up the screen on iPhone home-screen apps after
+   scrolling or closing the keyboard. */
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { display: flex; flex-direction: column; }
+.scroller {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
 .wrap {
   max-width: 480px;
   margin-inline: auto;
   padding-inline: 16px;
-  padding-block: 8px 104px;
+  padding-block: 8px 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -244,10 +257,7 @@ h1 {
 
 /* Tab bar */
 .tabs {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  flex: none;
   display: flex;
   justify-content: center;
   background: #F9FAFB;
@@ -333,7 +343,7 @@ body { margin: 0; }
 </style>
 </head>
 <body>
-<main class="wrap" id="app"></main>
+<div class="scroller" id="scroller"><main class="wrap" id="app"></main></div>
 
 <nav class="tabs" id="tabs" aria-label="Sections" hidden>
   <div class="inner">
@@ -373,6 +383,8 @@ body { margin: 0; }
   var ICON_RIGHT = '<svg aria-hidden="true" width="10" height="18" viewBox="0 0 10 18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 6 7-6 7"></path></svg>';
 
   var app = document.getElementById('app');
+  var scroller = document.getElementById('scroller');
+  function toTop() { scroller.scrollTop = 0; }
   var tabs = document.getElementById('tabs');
   var sb = window.supabase && window.supabase.createClient
     ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true } })
@@ -672,7 +684,7 @@ body { margin: 0; }
     state.view = view;
     resetDetailFlags();
     render();
-    window.scrollTo(0, 0);
+    toTop();
   }
   function openWorkout(id) {
     var w = state.workouts.find(function (x) { return x.id === id; });
@@ -683,7 +695,7 @@ body { margin: 0; }
     state.view = 'detail';
     resetDetailFlags();
     render();
-    window.scrollTo(0, 0);
+    toTop();
   }
   function newWorkout() {
     if (!sb || !state.session) return;
@@ -696,7 +708,7 @@ body { margin: 0; }
     state.view = 'detail';
     resetDetailFlags();
     render();
-    window.scrollTo(0, 0);
+    toTop();
     setSaveState('saving');
     flush();
   }
@@ -713,7 +725,7 @@ body { margin: 0; }
     state.view = 'workouts';
     resetDetailFlags();
     render();
-    window.scrollTo(0, 0);
+    toTop();
   }
 
   // ---------- signing in ----------
@@ -1266,6 +1278,16 @@ body { margin: 0; }
     else if (state.session && state.view !== 'detail') { loadWorkouts(); loadLibrary(); }
   });
   window.addEventListener('pagehide', function () { flush(); });
+
+  // iPhone can leave the whole page shifted up after the keyboard closes; put it back.
+  document.addEventListener('focusout', function () {
+    setTimeout(function () {
+      var a = document.activeElement;
+      if (!(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) && (window.scrollY || document.documentElement.scrollTop)) {
+        window.scrollTo(0, 0);
+      }
+    }, 100);
+  });
 
   // ---------- start ----------
 
