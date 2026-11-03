@@ -510,6 +510,15 @@ body { margin: 0; }
     return list.sort(function (a, b) { return b.date.localeCompare(a.date) || b.createdAt - a.createdAt; });
   }
   function maxWeight(e) { return e.sets.reduce(function (m, s) { return Math.max(m, s.w); }, 0); }
+  // reps done at the heaviest weight (the best of those sets if there are several)
+  function repsAtMax(e) {
+    var top = maxWeight(e);
+    return e.sets.reduce(function (m, s) { return s.w === top ? Math.max(m, s.r) : m; }, 0);
+  }
+  function liftLabel(e) {
+    var r = repsAtMax(e);
+    return maxWeight(e) + ' kg' + (r > 0 ? ' × ' + r + (r === 1 ? ' rep' : ' reps') : '');
+  }
 
   // ---------- loading ----------
 
@@ -872,7 +881,7 @@ body { margin: 0; }
       return '<button class="row" data-act="open" data-id="' + esc(w.id) + '"><div class="body">' +
         '<div class="date">' + fmtLong(w.date) + '</div>' +
         (w.groups.length ? '<div class="groups">' + esc(w.groups.join(', ')) + '</div>' : '<div class="muted">No muscle groups set</div>') +
-        lifts.map(function (e) { return '<div class="lift"><span>' + esc(e.name || 'Unnamed exercise') + '</span><span>' + maxWeight(e) + ' kg</span></div>'; }).join('') +
+        lifts.map(function (e) { return '<div class="lift"><span>' + esc(e.name || 'Unnamed exercise') + '</span><span>' + liftLabel(e) + '</span></div>'; }).join('') +
         '</div><span class="chev">' + ICON_RIGHT + '</span></button>';
     }).join('') + '</section>';
     return html;
